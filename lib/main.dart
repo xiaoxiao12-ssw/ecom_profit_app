@@ -42,7 +42,7 @@ class EcomProfitApp extends StatelessWidget {
             color: Color(0xFF0F172A),
           ),
         ),
-        cardTheme: const CardTheme(
+        cardTheme: const CardThemeData(
           color: Colors.white,
           elevation: 0,
         ),
@@ -68,7 +68,7 @@ class EcomProfitApp extends StatelessWidget {
             color: Color(0xFFF8FAFC),
           ),
         ),
-        cardTheme: const CardTheme(
+        cardTheme: const CardThemeData(
           color: Color(0xFF1E293B),
           elevation: 0,
         ),
