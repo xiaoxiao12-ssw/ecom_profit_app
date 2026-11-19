@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/profit_record.dart';
 import '../services/storage_service.dart';
 
@@ -35,6 +36,7 @@ class HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _deleteRecord(ProfitRecord record) async {
+    HapticFeedback.mediumImpact();
     await StorageService.deleteRecord(record.id);
     await refreshRecords();
     if (!mounted) return;
@@ -68,6 +70,7 @@ class HistoryPageState extends State<HistoryPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -83,7 +86,7 @@ class HistoryPageState extends State<HistoryPage> {
                   context: context,
                   builder: (ctx) => AlertDialog(
                     title: const Text('确认清空所有历史？'),
-                    content: const Text('清空后数据无法恢复，请谨慎操作。'),
+                    content: const Text('清空后本地测算数据将彻底清除。'),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
                       FilledButton(
@@ -104,47 +107,40 @@ class HistoryPageState extends State<HistoryPage> {
       ),
       body: Column(
         children: [
-          // 搜索与筛选区域
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          // 搜索与平台筛选栏
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            color: isDark ? const Color(0xFF1E293B) : Colors.white,
             child: Column(
               children: [
                 TextField(
-                  onChanged: (val) => setState(() => _searchQuery = val.trim()),
                   decoration: InputDecoration(
-                    hintText: '搜索商品名称或平台...',
-                    prefixIcon: const Icon(Icons.search, size: 20),
+                    hintText: '搜索历史商品名称或平台...',
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     filled: true,
-                    fillColor: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+                    fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide.none,
                     ),
                   ),
+                  onChanged: (val) => setState(() => _searchQuery = val.trim()),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: _platforms.map((p) {
                       final isSelected = _selectedPlatform == p;
                       return Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: FilterChip(
-                          label: Text(p),
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(p, style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
                           selected: isSelected,
+                          selectedColor: const Color(0xFF10B981).withOpacity(0.2),
                           onSelected: (_) => setState(() => _selectedPlatform = p),
-                          selectedColor: theme.colorScheme.primaryContainer,
-                          labelStyle: TextStyle(
-                            fontSize: 12,
-                            color: isSelected
-                                ? theme.colorScheme.onPrimaryContainer
-                                : theme.colorScheme.onSurfaceVariant,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          ),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                         ),
                       );
                     }).toList(),
@@ -166,7 +162,7 @@ class HistoryPageState extends State<HistoryPage> {
                         itemCount: _filteredRecords.length,
                         itemBuilder: (context, index) {
                           final item = _filteredRecords[index];
-                          return _buildDismissibleItem(item, theme);
+                          return _buildDismissibleItem(item, isDark);
                         },
                       ),
           ),
@@ -198,7 +194,7 @@ class HistoryPageState extends State<HistoryPage> {
             const SizedBox(height: 6),
             Text(
               _allRecords.isEmpty
-                  ? '在「利润测算」页面点击右上角或底部的保存方案，即可在此随时回填与对比！'
+                  ? '在「利润测算」页面点击保存方案，即可在此随时回填重新编辑！'
                   : '请尝试更换搜索词或筛选标签',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -211,10 +207,7 @@ class HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  Widget _buildDismissibleItem(ProfitRecord item, ThemeData theme) {
-    final isPositive = item.realNetProfit >= 0;
-    final profitColor = isPositive ? Colors.teal.shade700 : Colors.red.shade700;
-
+  Widget _buildDismissibleItem(ProfitRecord item, bool isDark) {
     return Dismissible(
       key: Key(item.id),
       direction: DismissDirection.endToStart,
@@ -222,7 +215,7 @@ class HistoryPageState extends State<HistoryPage> {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
         decoration: BoxDecoration(
-          color: Colors.red.shade700,
+          color: const Color(0xFFDC2626),
           borderRadius: BorderRadius.circular(16),
         ),
         child: const Row(
@@ -235,27 +228,37 @@ class HistoryPageState extends State<HistoryPage> {
         ),
       ),
       onDismissed: (_) => _deleteRecord(item),
-      child: Card(
-        elevation: 0,
+      child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-        shape: RoundedRectangleBorder(
+        decoration: BoxDecoration(
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: theme.colorScheme.outlineVariant.withOpacity(0.6)),
+          border: Border.all(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.15 : 0.03),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
+            HapticFeedback.lightImpact();
             widget.onSelectRecord?.call(item);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('已回填方案: ${item.productName.isEmpty ? "未命名商品" : item.productName}'),
-                duration: const Duration(seconds: 2),
+                content: Text('已回填方案「${item.productName.isEmpty ? "未命名商品" : item.productName}」到测算器'),
                 behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 2),
               ),
             );
           },
           child: Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -263,72 +266,75 @@ class HistoryPageState extends State<HistoryPage> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: Text(
-                        item.productName.isEmpty ? '未命名商品' : item.productName,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0284C7).withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              item.platform,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0284C7),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              item.productName.isEmpty ? '未命名商品' : item.productName,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primaryContainer.withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(8),
+                        color: item.healthBgColor,
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        item.platform,
+                        item.healthBadgeText,
                         style: TextStyle(
                           fontSize: 11,
-                          color: theme.colorScheme.onPrimaryContainer,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.bold,
+                          color: item.healthColor,
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      '售价: ¥${item.sellingPrice.toStringAsFixed(2)} | 成本: ¥${item.costPrice.toStringAsFixed(2)}',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
-                    ),
-                    Row(
-                      children: [
-                        Text(
-                          '净利: ',
-                          style: TextStyle(fontSize: 12, color: theme.colorScheme.outline),
-                        ),
-                        Text(
-                          '¥${item.realNetProfit.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: profitColor,
-                          ),
-                        ),
-                      ],
-                    ),
+                    _dataCol("售价", "¥${item.sellingPrice.toStringAsFixed(1)}", isDark),
+                    _dataCol("拿货成本", "¥${item.costPrice.toStringAsFixed(1)}", isDark),
+                    _dataCol("真实净利", "¥${item.realNetProfit.toStringAsFixed(1)}", isDark, color: item.healthColor),
+                    _dataCol("净利率", "${item.netMargin.toStringAsFixed(1)}%", isDark, color: item.healthColor),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      '退货率: ${item.returnRate.toStringAsFixed(1)}% | 扣点: ${item.commissionRate.toStringAsFixed(1)}%',
-                      style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline, fontSize: 11),
+                      "保本 ROI: ${item.breakevenRoi > 0 ? item.breakevenRoi.toStringAsFixed(2) : '不可保本'} · 退货损耗: ¥${item.returnLossPerOrder.toStringAsFixed(2)}",
+                      style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[400] : Colors.grey[600]),
                     ),
                     Text(
-                      '保本ROI: ${item.breakevenRoi > 0 ? item.breakevenRoi.toStringAsFixed(2) : "不可保本"}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: item.breakevenRoi > 0 ? Colors.indigo.shade700 : Colors.red.shade700,
-                      ),
+                      "${item.createdAt.month}-${item.createdAt.day} ${item.createdAt.hour.toString().padLeft(2, '0')}:${item.createdAt.minute.toString().padLeft(2, '0')}",
+                      style: TextStyle(fontSize: 11, color: isDark ? Colors.grey[500] : Colors.grey[500]),
                     ),
                   ],
                 ),
@@ -337,6 +343,24 @@ class HistoryPageState extends State<HistoryPage> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _dataCol(String label, String val, bool isDark, {Color? color}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 10, color: isDark ? Colors.grey[400] : Colors.grey[600])),
+        const SizedBox(height: 2),
+        Text(
+          val,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: color ?? (isDark ? Colors.white : const Color(0xFF0F172A)),
+          ),
+        ),
+      ],
     );
   }
 }

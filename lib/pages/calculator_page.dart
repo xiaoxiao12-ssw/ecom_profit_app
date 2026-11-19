@@ -1,17 +1,21 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/profit_record.dart';
 import '../services/storage_service.dart';
 import '../widgets/metric_card.dart';
+import '../widgets/profit_pie_chart.dart';
 
 class CalculatorPage extends StatefulWidget {
   final ProfitRecord? initialRecord;
   final VoidCallback? onSaved;
+  final Function(ProfitRecord)? onRecordChanged;
 
   const CalculatorPage({
     super.key,
     this.initialRecord,
     this.onSaved,
+    this.onRecordChanged,
   });
 
   @override
@@ -33,6 +37,9 @@ class CalculatorPageState extends State<CalculatorPage> {
 
   // 当前实时计算对象
   ProfitRecord? _currentRecord;
+
+  // 互动推演沙盘折叠状态
+  bool _isSandboxExpanded = true;
 
   // 平台常见参考预设
   static const Map<String, Map<String, double>> platformDefaults = {
@@ -94,17 +101,16 @@ class CalculatorPageState extends State<CalculatorPage> {
 
   void _switchPlatform(String platform) {
     if (_selectedPlatform == platform) return;
+    HapticFeedback.selectionClick();
     setState(() {
       _selectedPlatform = platform;
       final defaults = platformDefaults[platform];
       if (defaults != null) {
-        _commissionRateCtrl.text = defaults['commission']!.toStringAsFixed(1);
-        _shippingInsuranceCtrl.text = defaults['insurance']!.toStringAsFixed(2);
-        _returnRateCtrl.text = defaults['returnRate']!.toStringAsFixed(1);
-        if (_expressFeeCtrl.text.isEmpty || _expressFeeCtrl.text == '0' || _expressFeeCtrl.text == '0.0') {
+        if (platform != '自定义') {
+          _commissionRateCtrl.text = defaults['commission']!.toStringAsFixed(1);
+          _shippingInsuranceCtrl.text = defaults['insurance']!.toStringAsFixed(2);
+          _returnRateCtrl.text = defaults['returnRate']!.toStringAsFixed(1);
           _expressFeeCtrl.text = defaults['express']!.toStringAsFixed(2);
-        }
-        if (_packFeeCtrl.text.isEmpty || _packFeeCtrl.text == '0' || _packFeeCtrl.text == '0.0') {
           _packFeeCtrl.text = defaults['pack']!.toStringAsFixed(2);
         }
       }
@@ -118,7 +124,7 @@ class CalculatorPageState extends State<CalculatorPage> {
 
   void _recalculate() {
     final record = ProfitRecord(
-      id: widget.initialRecord?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      id: _currentRecord?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       productName: _nameCtrl.text.trim(),
       platform: _selectedPlatform,
       sellingPrice: _parse(_sellingPriceCtrl),
@@ -135,10 +141,14 @@ class CalculatorPageState extends State<CalculatorPage> {
     setState(() {
       _currentRecord = record;
     });
+
+    widget.onRecordChanged?.call(record);
   }
 
   Future<void> _saveRecord() async {
     if (_currentRecord == null) return;
+    HapticFeedback.mediumImpact();
+
     final toSave = ProfitRecord(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       productName: _nameCtrl.text.trim().isEmpty ? '未命名商品' : _nameCtrl.text.trim(),
@@ -167,7 +177,7 @@ class CalculatorPageState extends State<CalculatorPage> {
             Text('方案已成功保存到本地历史记录！'),
           ],
         ),
-        backgroundColor: Colors.teal.shade700,
+        backgroundColor: const Color(0xFF059669),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -176,6 +186,7 @@ class CalculatorPageState extends State<CalculatorPage> {
 
   void _copyBill() {
     if (_currentRecord == null) return;
+    HapticFeedback.lightImpact();
     final bill = _currentRecord!.toShareableBill();
     Clipboard.setData(ClipboardData(text: bill));
 
@@ -185,10 +196,10 @@ class CalculatorPageState extends State<CalculatorPage> {
           children: [
             Icon(Icons.content_copy_rounded, color: Colors.white, size: 20),
             SizedBox(width: 8),
-            Text('测算账单已复制到剪贴板，可直接发送！'),
+            Text('精美账单已复制，可直接发送微信！'),
           ],
         ),
-        backgroundColor: Colors.indigo.shade700,
+        backgroundColor: const Color(0xFF0284C7),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -198,23 +209,21 @@ class CalculatorPageState extends State<CalculatorPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final rec = _currentRecord;
-
-    final isProfitPositive = rec != null && rec.realNetProfit >= 0;
-    final profitColor = isProfitPositive ? const Color(0xFF059669) : Colors.redAccent.shade700;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('电商成本与利润测算'),
+        title: const Text('少伟利润通'),
         elevation: 0,
         actions: [
           IconButton(
-            tooltip: '一键复制账单',
+            tooltip: '一键复制微信账单',
             icon: const Icon(Icons.share_outlined),
             onPressed: _copyBill,
           ),
           IconButton(
-            tooltip: '保存方案',
+            tooltip: '保存当前方案',
             icon: const Icon(Icons.bookmark_add_outlined),
             onPressed: _saveRecord,
           ),
@@ -225,385 +234,538 @@ class CalculatorPageState extends State<CalculatorPage> {
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           children: [
-            // 1. 平台快捷标签切换
-            Card(
-              elevation: 0,
-              color: theme.colorScheme.surfaceVariant.withOpacity(0.35),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '经营平台',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: platformDefaults.keys.map((platform) {
-                        final isSelected = _selectedPlatform == platform;
-                        return ChoiceChip(
-                          label: Text(platform),
-                          selected: isSelected,
-                          onSelected: (_) => _switchPlatform(platform),
-                          selectedColor: theme.colorScheme.primaryContainer,
-                          labelStyle: TextStyle(
-                            color: isSelected
-                                ? theme.colorScheme.onPrimaryContainer
-                                : theme.colorScheme.onSurfaceVariant,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
+            // 1. 经营平台快捷选择
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-
-            // 2. 核心指标高亮大卡片 (实时收益面板)
-            if (rec != null) ...[
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: isProfitPositive
-                        ? [Colors.teal.shade50, Colors.teal.shade100.withOpacity(0.4)]
-                        : [Colors.red.shade50, Colors.red.shade100.withOpacity(0.4)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isProfitPositive ? Colors.teal.shade200 : Colors.red.shade200,
-                    width: 1.2,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(
-                              isProfitPositive ? Icons.check_circle_outline_rounded : Icons.warning_amber_rounded,
-                              color: isProfitPositive ? Colors.teal.shade800 : Colors.red.shade800,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '真实单单净利润 (计退货损耗)',
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                color: isProfitPositive ? Colors.teal.shade900 : Colors.red.shade900,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        '经营平台预设',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
                         ),
+                      ),
+                      if (rec != null)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: isProfitPositive ? Colors.teal.shade800 : Colors.red.shade800,
-                            borderRadius: BorderRadius.circular(12),
+                            color: rec.healthBgColor,
+                            borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
-                            '净利率 ${rec.netMargin.toStringAsFixed(1)}%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
+                            rec.healthBadgeText,
+                            style: TextStyle(
+                              fontSize: 11,
                               fontWeight: FontWeight.bold,
+                              color: rec.healthColor,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '¥',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: isProfitPositive ? Colors.teal.shade900 : Colors.red.shade900,
-                          ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: platformDefaults.keys.map((platform) {
+                      final isSelected = _selectedPlatform == platform;
+                      return ChoiceChip(
+                        label: Text(platform),
+                        selected: isSelected,
+                        selectedColor: const Color(0xFF10B981).withOpacity(0.2),
+                        labelStyle: TextStyle(
+                          color: isSelected
+                              ? const Color(0xFF059669)
+                              : (isDark ? Colors.grey[300] : Colors.black87),
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 12,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          rec.realNetProfit.toStringAsFixed(2),
-                          style: TextStyle(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w900,
-                            color: isProfitPositive ? Colors.teal.shade900 : Colors.red.shade900,
-                            letterSpacing: -1,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 24),
-                    // 次级关键指标网格
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        return GridView.count(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          crossAxisCount: constraints.maxWidth > 500 ? 3 : 2,
-                          childAspectRatio: 2.2,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                          children: [
-                            MetricCard(
-                              title: '单笔基础毛利',
-                              value: '¥${rec.grossProfit.toStringAsFixed(2)}',
-                              subtitle: '毛利率 ${rec.grossMargin.toStringAsFixed(1)}%',
-                              icon: Icons.account_balance_wallet_outlined,
-                            ),
-                            MetricCard(
-                              title: '保本投产比 (ROI)',
-                              value: rec.breakevenRoi > 0
-                                  ? rec.breakevenRoi.toStringAsFixed(2)
-                                  : '不可保本',
-                              subtitle: rec.breakevenRoi > 0
-                                  ? '广告ROI高于此值即盈利'
-                                  : '毛利不足覆盖运费',
-                              valueColor: rec.breakevenRoi > 0 ? Colors.indigo.shade800 : Colors.red.shade700,
-                              icon: Icons.track_changes_rounded,
-                              isHighlight: true,
-                            ),
-                            MetricCard(
-                              title: '单单平台扣点',
-                              value: '¥${rec.commissionAmount.toStringAsFixed(2)}',
-                              subtitle: '比例 ${rec.commissionRate.toStringAsFixed(1)}%',
-                              icon: Icons.pie_chart_outline_rounded,
-                            ),
-                            MetricCard(
-                              title: '最大可承受广告费',
-                              value: rec.maxAllowableAdSpend > 0
-                                  ? '¥${rec.maxAllowableAdSpend.toStringAsFixed(2)}'
-                                  : '¥0.00',
-                              subtitle: '单单推广费上限',
-                              icon: Icons.campaign_outlined,
-                            ),
-                          ],
-                        );
-                      },
+                        onSelected: (_) => _switchPlatform(platform),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+
+            // 2. 成本与利润构成全景环形图 (fl_chart)
+            if (rec != null)
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(isDark ? 0.2 : 0.04),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
+                child: ProfitPieChart(record: rec, isDark: isDark),
               ),
-              const SizedBox(height: 16),
+            const SizedBox(height: 14),
+
+            // 3. 核心经营指标卡片网格
+            if (rec != null) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: MetricCard(
+                      title: '真实单笔净利',
+                      value: '¥${rec.realNetProfit.toStringAsFixed(2)}',
+                      subtitle: '已扣退货损耗与广告',
+                      valueColor: rec.healthColor,
+                      icon: Icons.savings_outlined,
+                      iconColor: rec.healthColor,
+                      isHighlight: true,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: MetricCard(
+                      title: '真实净利率',
+                      value: '${rec.netMargin.toStringAsFixed(1)}%',
+                      subtitle: rec.healthBadgeText,
+                      valueColor: rec.healthColor,
+                      icon: Icons.pie_chart_outline_rounded,
+                      iconColor: rec.healthColor,
+                      isHighlight: true,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: MetricCard(
+                      title: '单笔基础毛利',
+                      value: '¥${rec.grossProfit.toStringAsFixed(2)}',
+                      subtitle: '毛利率: ${rec.grossMargin.toStringAsFixed(1)}%',
+                      icon: Icons.trending_up_rounded,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: MetricCard(
+                      title: '保本投产比 (ROI)',
+                      value: rec.breakevenRoi > 0 ? rec.breakevenRoi.toStringAsFixed(2) : '不可保本',
+                      subtitle: rec.breakevenRoi > 0 ? '推广ROI高于此即盈利' : '成本倒挂',
+                      icon: Icons.track_changes_rounded,
+                      valueColor: rec.breakevenRoi > 0 ? const Color(0xFF0284C7) : Colors.red,
+                    ),
+                  ),
+                ],
+              ),
             ],
+            const SizedBox(height: 14),
 
-            // 3. 详细参数表单
-            Text(
-              '测算参数输入',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+            // 4. 【可折叠的互动推演沙盘】
+            _buildInteractiveSandbox(isDark, rec),
+            const SizedBox(height: 14),
+
+            // 5. 详细参数输入表单
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-
-            // 商品名称
-            _buildTextField(
-              controller: _nameCtrl,
-              label: '商品名称',
-              hint: '例如: 夏季透气T恤 (选填)',
-              icon: Icons.shopping_bag_outlined,
-              keyboardType: TextInputType.text,
-            ),
-            const SizedBox(height: 10),
-
-            // 售价与成本 (一行两列)
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    controller: _sellingPriceCtrl,
-                    label: '销售定价',
-                    suffix: '元',
-                    icon: Icons.sell_outlined,
-                    isNumeric: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        '基础经营参数输入',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      TextButton.icon(
+                        onPressed: () {
+                          HapticFeedback.lightImpact();
+                          _nameCtrl.clear();
+                          _sellingPriceCtrl.text = '99.0';
+                          _costPriceCtrl.text = '35.0';
+                          _recalculate();
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 14),
+                        label: const Text('重置数值', style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildTextField(
-                    controller: _costPriceCtrl,
-                    label: '拿货成本',
-                    suffix: '元',
-                    icon: Icons.inventory_2_outlined,
-                    isNumeric: true,
+                  const SizedBox(height: 10),
+                  _buildTextInput(
+                    controller: _nameCtrl,
+                    label: '商品名称 / 款号 (选填)',
+                    hint: '例如: 夏季透气运动速干T恤',
+                    icon: Icons.label_outline_rounded,
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            // 快递与包材
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    controller: _expressFeeCtrl,
-                    label: '发货快递费',
-                    suffix: '元',
-                    icon: Icons.local_shipping_outlined,
-                    isNumeric: true,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildNumberInput(
+                          controller: _sellingPriceCtrl,
+                          label: '销售标价',
+                          prefix: '¥',
+                          suffix: '元',
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildNumberInput(
+                          controller: _costPriceCtrl,
+                          label: '拿货成本',
+                          prefix: '¥',
+                          suffix: '元',
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildTextField(
-                    controller: _packFeeCtrl,
-                    label: '包材人工费',
-                    suffix: '元',
-                    icon: Icons.archive_outlined,
-                    isNumeric: true,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildNumberInput(
+                          controller: _expressFeeCtrl,
+                          label: '发货快递费',
+                          prefix: '¥',
+                          suffix: '元',
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildNumberInput(
+                          controller: _packFeeCtrl,
+                          label: '包材与人工',
+                          prefix: '¥',
+                          suffix: '元',
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            // 平台扣点与运费险
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    controller: _commissionRateCtrl,
-                    label: '平台扣点比例',
-                    suffix: '%',
-                    icon: Icons.percent_outlined,
-                    isNumeric: true,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildNumberInput(
+                          controller: _commissionRateCtrl,
+                          label: '平台扣点比例',
+                          suffix: '%',
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildNumberInput(
+                          controller: _shippingInsuranceCtrl,
+                          label: '单笔运费险',
+                          prefix: '¥',
+                          suffix: '元',
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildTextField(
-                    controller: _shippingInsuranceCtrl,
-                    label: '运费险费',
-                    suffix: '元/单',
-                    icon: Icons.health_and_safety_outlined,
-                    isNumeric: true,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildNumberInput(
+                          controller: _returnRateCtrl,
+                          label: '预估退货率',
+                          suffix: '%',
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildNumberInput(
+                          controller: _promoFeeCtrl,
+                          label: '单单推广花费',
+                          prefix: '¥',
+                          suffix: '元',
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            // 预估退货率与单单推广费
-            Row(
-              children: [
-                Expanded(
-                  child: _buildTextField(
-                    controller: _returnRateCtrl,
-                    label: '预估退货率',
-                    suffix: '%',
-                    icon: Icons.replay_circle_filled_outlined,
-                    isNumeric: true,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _buildTextField(
-                    controller: _promoFeeCtrl,
-                    label: '单单推广花费',
-                    suffix: '元/单',
-                    icon: Icons.campaign_outlined,
-                    isNumeric: true,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 20),
 
-            // 4. 底部快捷操作按钮
+            // 6. 底部快捷操作按钮组
             Row(
               children: [
                 Expanded(
+                  flex: 3,
+                  child: ElevatedButton.icon(
+                    onPressed: _saveRecord,
+                    icon: const Icon(Icons.bookmark_added_rounded),
+                    label: const Text('保存测算方案'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF059669),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
                   flex: 2,
                   child: OutlinedButton.icon(
+                    onPressed: _copyBill,
+                    icon: const Icon(Icons.content_copy_rounded, size: 16),
+                    label: const Text('一键复制'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    onPressed: _copyBill,
-                    icon: const Icon(Icons.copy_rounded, size: 18),
-                    label: const Text('复制账单'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 3,
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: _saveRecord,
-                    icon: const Icon(Icons.save_outlined, size: 18),
-                    label: const Text('保存到历史记录'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 30),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    String? hint,
-    String? suffix,
-    IconData? icon,
-    bool isNumeric = false,
-    TextInputType? keyboardType,
-  }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType ?? (isNumeric ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text),
-      onChanged: (_) => _recalculate(),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        suffixText: suffix,
-        prefixIcon: icon != null ? Icon(icon, size: 19) : null,
-        filled: true,
-        fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.2),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+  // --- 互动推演沙盘组件 ---
+  Widget _buildInteractiveSandbox(bool isDark, ProfitRecord? rec) {
+    final double sellingPrice = _parse(_sellingPriceCtrl);
+    final double returnRate = _parse(_returnRateCtrl);
+    final double promoFee = _parse(_promoFeeCtrl);
+
+    // 售价滑块区间：基于当前售价的 0.5 ~ 2.0 倍
+    final double minPrice = max(5.0, (sellingPrice * 0.5).roundToDouble());
+    final double maxPrice = max(50.0, (sellingPrice * 1.8).roundToDouble());
+    final double currentSliderPrice = sellingPrice.clamp(minPrice, maxPrice);
+
+    final double maxPromoLimit = max(50.0, sellingPrice > 0 ? sellingPrice * 0.6 : 50.0);
+    final double currentPromo = promoFee.clamp(0.0, maxPromoLimit);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF0284C7).withOpacity(0.4),
+          width: 1.5,
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.6)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 1.5),
-        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0284C7).withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // 标题与折叠开关
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              setState(() {
+                _isSandboxExpanded = !_isSandboxExpanded;
+              });
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.tune_rounded, color: Color(0xFF0284C7), size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        "🎛️ 互动推演沙盘",
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        "(拖动滑块实时推演)",
+                        style: TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                  Icon(
+                    _isSandboxExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                    color: Colors.grey,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isSandboxExpanded) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // 1. 售价微调滑块
+                  _buildSliderRow(
+                    label: "售价微调",
+                    valueText: "¥${sellingPrice.toStringAsFixed(1)}",
+                    min: minPrice,
+                    max: maxPrice,
+                    current: currentSliderPrice,
+                    activeColor: const Color(0xFF059669),
+                    onChanged: (val) {
+                      HapticFeedback.selectionClick();
+                      _sellingPriceCtrl.text = val.toStringAsFixed(1);
+                      _recalculate();
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 2. 退货率 (0% ~ 50%) 滑块
+                  _buildSliderRow(
+                    label: "预估退货率",
+                    valueText: "${returnRate.toStringAsFixed(1)}%",
+                    min: 0.0,
+                    max: 50.0,
+                    current: returnRate.clamp(0.0, 50.0),
+                    activeColor: const Color(0xFFF43F5E),
+                    onChanged: (val) {
+                      HapticFeedback.selectionClick();
+                      _returnRateCtrl.text = val.toStringAsFixed(1);
+                      _recalculate();
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  // 3. 单均推广费滑块
+                  _buildSliderRow(
+                    label: "单均推广费",
+                    valueText: "¥${promoFee.toStringAsFixed(1)}",
+                    min: 0.0,
+                    max: maxPromoLimit,
+                    current: currentPromo,
+                    activeColor: const Color(0xFFEAB308),
+                    onChanged: (val) {
+                      HapticFeedback.selectionClick();
+                      _promoFeeCtrl.text = val.toStringAsFixed(1);
+                      _recalculate();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
+
+  Widget _buildSliderRow({
+    required String label,
+    required String valueText,
+    required double min,
+    required double max,
+    required double current,
+    required Color activeColor,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            Text(
+              valueText,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: activeColor,
+              ),
+            ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: activeColor,
+            thumbColor: activeColor,
+            overlayColor: activeColor.withOpacity(0.15),
+            trackHeight: 4,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+          ),
+          child: Slider(
+            value: current,
+            min: min,
+            max: max,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextInput({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+  }) {
+    return TextField(
+      controller: controller,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, size: 18),
+        isDense: true,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      onChanged: (_) => _recalculate(),
+    );
+  }
+
+  Widget _buildNumberInput({
+    required TextEditingController controller,
+    required String label,
+    String? prefix,
+    String? suffix,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixText: prefix != null ? '$prefix ' : null,
+        suffixText: suffix != null ? ' $suffix' : null,
+        isDense: true,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      onChanged: (_) => _recalculate(),
+    );
+  }
 }
-
-

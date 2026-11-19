@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="电商成本与利润分析"
+        android:label="少伟利润通"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

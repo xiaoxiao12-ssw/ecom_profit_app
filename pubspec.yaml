@@ -1,7 +1,7 @@
 name: ecom_profit_app
-description: "A modern e-commerce cost and profit analysis app."
+description: "少伟利润通 - 电商成本与利润全维度分析神器"
 publish_to: "none"
-version: 1.0.0+1
+version: 2.0.0+2
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -11,6 +11,7 @@ dependencies:
     sdk: flutter
   shared_preferences: ^2.3.2
   intl: ^0.19.0
+  fl_chart: ^1.0.0
 
 dev_dependencies:
   flutter_test:
@@ -19,3 +20,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon/

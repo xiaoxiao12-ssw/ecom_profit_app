@@ -1,4 +1,12 @@
 import 'dart:convert';
+import 'package:flutter/material.dart';
+
+enum ProfitHealth {
+  highProfit,    // > 20%
+  moderateProfit,// 10% - 20%
+  lowProfit,     // 0% - 10%
+  dangerLoss,    // < 0%
+}
 
 class ProfitRecord {
   final String id;
@@ -78,35 +86,93 @@ class ProfitRecord {
   double get breakevenRoi {
     final double maxAd = maxAllowableAdSpend;
     if (maxAd <= 0 || sellingPrice <= 0) {
-      return 0.0; // 无法保本或售价非法
+      return 0.0;
     }
     return sellingPrice / maxAd;
   }
 
-  // --- 复制账单纯文本格式化 ---
+  /// 预估退货单均直接损耗金额 (元)
+  double get returnLossPerOrder {
+    final double r = (returnRate / 100).clamp(0.0, 1.0);
+    return r * (expressFee + packFee + shippingInsurance);
+  }
+
+  /// 利润健康度等级
+  ProfitHealth get healthStatus {
+    final margin = netMargin;
+    if (margin > 20.0) return ProfitHealth.highProfit;
+    if (margin >= 10.0) return ProfitHealth.moderateProfit;
+    if (margin >= 0.0) return ProfitHealth.lowProfit;
+    return ProfitHealth.dangerLoss;
+  }
+
+  /// 利润健康度标签文案
+  String get healthBadgeText {
+    switch (healthStatus) {
+      case ProfitHealth.highProfit:
+        return '优质爆款';
+      case ProfitHealth.moderateProfit:
+        return '稳健盈利';
+      case ProfitHealth.lowProfit:
+        return '微利预警';
+      case ProfitHealth.dangerLoss:
+        return '亏损高危';
+    }
+  }
+
+  /// 利润健康度主要配色
+  Color get healthColor {
+    switch (healthStatus) {
+      case ProfitHealth.highProfit:
+        return const Color(0xFF10B981); // Emerald Green
+      case ProfitHealth.moderateProfit:
+        return const Color(0xFF0284C7); // Sky/Cyan Blue
+      case ProfitHealth.lowProfit:
+        return const Color(0xFFF59E0B); // Amber Yellow
+      case ProfitHealth.dangerLoss:
+        return const Color(0xFFEF4444); // Crimson Red
+    }
+  }
+
+  /// 利润健康度背景淡色
+  Color get healthBgColor {
+    switch (healthStatus) {
+      case ProfitHealth.highProfit:
+        return const Color(0xFFD1FAE5);
+      case ProfitHealth.moderateProfit:
+        return const Color(0xFFE0F2FE);
+      case ProfitHealth.lowProfit:
+        return const Color(0xFFFEF3C7);
+      case ProfitHealth.dangerLoss:
+        return const Color(0xFFFEE2E2);
+    }
+  }
+
+  // --- 复制账单纯文本格式化（排版精致、带表情符号对齐） ---
   String toShareableBill() {
-    final roiText = breakevenRoi > 0 ? breakevenRoi.toStringAsFixed(2) : "不可保本(成本倒挂)";
+    final roiText = breakevenRoi > 0 ? breakevenRoi.toStringAsFixed(2) : "无法保本(成本倒挂)";
+    final formattedTime = "${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}";
+    
     return '''
-【电商成本与利润测算清单】
------------------------------
-📦 商品名称: ${productName.isEmpty ? '未命名商品' : productName}
-🏷 所属平台: $platform
-💰 销售定价: ¥${sellingPrice.toStringAsFixed(2)}
-📉 拿货成本: ¥${costPrice.toStringAsFixed(2)}
-🚚 快递运费: ¥${expressFee.toStringAsFixed(2)}
-📦 包材人工: ¥${packFee.toStringAsFixed(2)}
-🏛 平台扣点: ${commissionRate.toStringAsFixed(1)}% (¥${commissionAmount.toStringAsFixed(2)})
-🛡 运费险费: ¥${shippingInsurance.toStringAsFixed(2)}
-🔄 预估退货: ${returnRate.toStringAsFixed(1)}%
-📢 单单推广: ¥${promoFee.toStringAsFixed(2)}
------------------------------
-📊【核心经营指标】
-▪ 单笔毛利: ¥${grossProfit.toStringAsFixed(2)} (毛利率: ${grossMargin.toStringAsFixed(1)}%)
-▪ 真实净利: ¥${realNetProfit.toStringAsFixed(2)} (净利率: ${netMargin.toStringAsFixed(1)}%)
-🎯 保本投产比 (ROI): $roiText
-*(提示: 付费推广时 ROI 高于此保本线即可实现正向盈利)*
------------------------------
-⏰ 测算时间: ${createdAt.year}-${createdAt.month.toString().padLeft(2, '0')}-${createdAt.day.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}
+📊 【少伟利润通·盈利测算账单】
+─────────────────────────────
+🏷️ 商品名称：${productName.isEmpty ? '未命名商品' : productName}
+🏢 所属平台：$platform
+─────────────────────────────
+💰 销售定价：¥${sellingPrice.toStringAsFixed(2)}
+📦 拿货成本：¥${costPrice.toStringAsFixed(2)}
+🚚 快递包装：¥${(expressFee + packFee).toStringAsFixed(2)} (运费${expressFee.toStringAsFixed(1)} + 包材${packFee.toStringAsFixed(1)})
+🏛️ 平台扣点：${commissionRate.toStringAsFixed(1)}% (¥${commissionAmount.toStringAsFixed(2)})
+🛡️ 运费险费：¥${shippingInsurance.toStringAsFixed(2)}
+🔄 预估退货：${returnRate.toStringAsFixed(1)}% (损耗约 ¥${returnLossPerOrder.toStringAsFixed(2)})
+📢 单均推广：¥${promoFee.toStringAsFixed(2)}
+─────────────────────────────
+💵 真实净利：¥${realNetProfit.toStringAsFixed(2)}
+📈 真实净利率：${netMargin.toStringAsFixed(1)}% 【$healthBadgeText】
+🎯 保本 ROI ：$roiText
+*(💡提示：付费推广 ROI 高于此保本线即可实现盈利)*
+─────────────────────────────
+⏰ 测算时间：$formattedTime
 ''';
   }
 

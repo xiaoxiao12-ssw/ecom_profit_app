@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'models/profit_record.dart';
 import 'pages/calculator_page.dart';
-import 'pages/comparison_page.dart';
+import 'pages/pricing_tools_page.dart';
+import 'pages/monthly_simulator_page.dart';
 import 'pages/history_page.dart';
 
 void main() {
@@ -14,33 +15,51 @@ void main() {
   runApp(const EcomProfitApp());
 }
 
-class EcomProfitApp extends StatelessWidget {
+class EcomProfitApp extends StatefulWidget {
   const EcomProfitApp({super.key});
+
+  @override
+  State<EcomProfitApp> createState() => _EcomProfitAppState();
+}
+
+class _EcomProfitAppState extends State<EcomProfitApp> {
+  ThemeMode _themeMode = ThemeMode.light;
+
+  void _toggleTheme() {
+    HapticFeedback.lightImpact();
+    setState(() {
+      _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '电商成本与利润分析',
+      title: '少伟利润通',
       debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.system,
+      themeMode: _themeMode,
       theme: ThemeData(
         useMaterial3: true,
+        brightness: Brightness.light,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1E3A8A), // 深邃商务蓝
-          primary: const Color(0xFF1E3A8A),
-          secondary: const Color(0xFF0D9488), // 收益翡翠绿
-          surface: const Color(0xFFF8FAFC),
+          brightness: Brightness.light,
+          seedColor: const Color(0xFF0F172A),
+          primary: const Color(0xFF059669), // 翡翠绿
+          secondary: const Color(0xFF0284C7), // 商务蓝
+          surface: Colors.white,
         ),
-        scaffoldBackgroundColor: const Color(0xFFF1F5F9),
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
+          elevation: 0,
           titleTextStyle: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Color(0xFF0F172A),
           ),
+          iconTheme: IconThemeData(color: Color(0xFF0F172A)),
         ),
         cardTheme: const CardThemeData(
           color: Colors.white,
@@ -52,9 +71,9 @@ class EcomProfitApp extends StatelessWidget {
         brightness: Brightness.dark,
         colorScheme: ColorScheme.fromSeed(
           brightness: Brightness.dark,
-          seedColor: const Color(0xFF38BDF8),
-          primary: const Color(0xFF38BDF8),
-          secondary: const Color(0xFF34D399),
+          seedColor: const Color(0xFF10B981),
+          primary: const Color(0xFF10B981),
+          secondary: const Color(0xFF38BDF8),
           surface: const Color(0xFF1E293B),
         ),
         scaffoldBackgroundColor: const Color(0xFF0F172A),
@@ -62,24 +81,36 @@ class EcomProfitApp extends StatelessWidget {
           centerTitle: true,
           backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
+          elevation: 0,
           titleTextStyle: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             color: Color(0xFFF8FAFC),
           ),
+          iconTheme: IconThemeData(color: Color(0xFFF8FAFC)),
         ),
         cardTheme: const CardThemeData(
           color: Color(0xFF1E293B),
           elevation: 0,
         ),
       ),
-      home: const MainNavigationScreen(),
+      home: MainNavigationScreen(
+        isDarkMode: _themeMode == ThemeMode.dark,
+        onToggleTheme: _toggleTheme,
+      ),
     );
   }
 }
 
 class MainNavigationScreen extends StatefulWidget {
-  const MainNavigationScreen({super.key});
+  final bool isDarkMode;
+  final VoidCallback onToggleTheme;
+
+  const MainNavigationScreen({
+    super.key,
+    required this.isDarkMode,
+    required this.onToggleTheme,
+  });
 
   @override
   State<MainNavigationScreen> createState() => _MainNavigationScreenState();
@@ -88,7 +119,6 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
-  // 全局引用
   final GlobalKey<CalculatorPageState> _calculatorKey = GlobalKey<CalculatorPageState>();
   final GlobalKey<HistoryPageState> _historyKey = GlobalKey<HistoryPageState>();
 
@@ -97,65 +127,116 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void _onSelectRecordFromHistory(ProfitRecord record) {
     setState(() {
       _activeRecord = record;
-      _currentIndex = 0; // 切换回测算主页
+      _currentIndex = 0;
     });
-    // 回填数据
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _calculatorKey.currentState?.loadRecord(record);
-    });
+    _calculatorKey.currentState?.loadRecord(record);
   }
 
-  void _onSaved() {
-    _historyKey.currentState?.refreshRecords();
+  void _onApplyReverseToCalculator(ProfitRecord record) {
+    setState(() {
+      _activeRecord = record;
+      _currentIndex = 0;
+    });
+    _calculatorKey.currentState?.loadRecord(record);
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = widget.isDarkMode;
+
+    final List<Widget> pages = [
+      CalculatorPage(
+        key: _calculatorKey,
+        initialRecord: _activeRecord,
+        onSaved: () => _historyKey.currentState?.refreshRecords(),
+        onRecordChanged: (rec) => _activeRecord = rec,
+      ),
+      PricingToolsPage(
+        baseRecord: _activeRecord,
+        onApplyToCalculator: _onApplyReverseToCalculator,
+      ),
+      MonthlySimulatorPage(
+        baseRecord: _activeRecord,
+      ),
+      HistoryPage(
+        key: _historyKey,
+        onSelectRecord: _onSelectRecordFromHistory,
+      ),
+    ];
+
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
+      body: Stack(
         children: [
-          CalculatorPage(
-            key: _calculatorKey,
-            initialRecord: _activeRecord,
-            onSaved: _onSaved,
+          IndexedStack(
+            index: _currentIndex,
+            children: pages,
           ),
-          ComparisonPage(
-            baseRecord: _activeRecord,
-          ),
-          HistoryPage(
-            key: _historyKey,
-            onSelectRecord: _onSelectRecordFromHistory,
+          // 悬浮深色/浅色模式切换按钮（位于右上角，不遮挡内容）
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 6,
+            right: 80, // 避开 AppBar actions
+            child: Material(
+              color: Colors.transparent,
+              child: IconButton(
+                tooltip: isDark ? "切换至浅色模式" : "切换至深色模式",
+                icon: Icon(
+                  isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                  size: 20,
+                  color: isDark ? const Color(0xFFFBBF24) : const Color(0xFF64748B),
+                ),
+                onPressed: widget.onToggleTheme,
+              ),
+            ),
           ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (idx) {
-          setState(() {
-            _currentIndex = idx;
-          });
-          if (idx == 2) {
-            _historyKey.currentState?.refreshRecords();
-          }
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.calculate_outlined),
-            selectedIcon: Icon(Icons.calculate_rounded),
-            label: '利润测算',
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              width: 0.8,
+            ),
           ),
-          NavigationDestination(
-            icon: Icon(Icons.compare_arrows_rounded),
-            selectedIcon: Icon(Icons.compare_arrows_rounded),
-            label: '定价对比',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long_rounded),
-            label: '历史记录',
-          ),
-        ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _currentIndex,
+          elevation: 0,
+          backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+          indicatorColor: const Color(0xFF10B981).withOpacity(0.18),
+          height: 65,
+          onDestinationSelected: (index) {
+            HapticFeedback.selectionClick();
+            setState(() {
+              _currentIndex = index;
+            });
+            if (index == 3) {
+              _historyKey.currentState?.refreshRecords();
+            }
+          },
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.calculate_outlined, size: 22),
+              selectedIcon: Icon(Icons.calculate_rounded, color: Color(0xFF059669), size: 24),
+              label: '利润测算',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.tune_outlined, size: 22),
+              selectedIcon: Icon(Icons.tune_rounded, color: Color(0xFF059669), size: 24),
+              label: '定价决策',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.insights_outlined, size: 22),
+              selectedIcon: Icon(Icons.insights_rounded, color: Color(0xFF059669), size: 24),
+              label: '月度沙盘',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.history_outlined, size: 22),
+              selectedIcon: Icon(Icons.history_rounded, color: Color(0xFF059669), size: 24),
+              label: '历史记录',
+            ),
+          ],
+        ),
       ),
     );
   }

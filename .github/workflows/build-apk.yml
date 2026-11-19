@@ -36,6 +36,9 @@ jobs:
           rm -rf android
           flutter create . --org com.shaowei --platforms android
 
+      - name: Apply App Branding and Custom Icons
+        run: python3 scripts/apply_branding.py
+
       - name: Install Dependencies
         run: flutter pub get
 
