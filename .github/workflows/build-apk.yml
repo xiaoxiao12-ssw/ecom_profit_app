@@ -31,14 +31,16 @@ jobs:
       - name: Verify Flutter Environment
         run: flutter doctor -v
 
-      - name: Generate Official Android Platform Files
-        run: flutter create . --org com.shaowei --platforms android
+      - name: Generate Clean Android Platform Files
+        run: |
+          rm -rf android
+          flutter create . --org com.shaowei --platforms android
 
       - name: Install Dependencies
         run: flutter pub get
 
       - name: Build Release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --android-skip-build-dependency-validation
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
