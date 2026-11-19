@@ -201,7 +201,7 @@ class CalculatorPageState extends State<CalculatorPage> {
     final rec = _currentRecord;
 
     final isProfitPositive = rec != null && rec.realNetProfit >= 0;
-    final profitColor = isProfitPositive ? Colors.emeraldGreen : Colors.redAccent.shade700;
+    final profitColor = isProfitPositive ? const Color(0xFF059669) : Colors.redAccent.shade700;
 
     return Scaffold(
       appBar: AppBar(
@@ -606,7 +606,4 @@ class CalculatorPageState extends State<CalculatorPage> {
   }
 }
 
-// 补充色彩定义
-extension EmeraldColor on Colors {
-  static const Color emeraldGreen = Color(0xFF059669);
-}
+
